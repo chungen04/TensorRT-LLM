@@ -613,6 +613,10 @@ class KVCacheManager(BaseResourceManager):
                     max_kv_event_entries=self.event_buffer_max_size)
 
         self.impl = KVCacheManagerCpp(**kwargs)
+        # No-op on bindings built before set_spec_decoding_budget.
+        if hasattr(self.impl, 'set_spec_decoding_budget'):
+            self.impl.set_spec_decoding_budget(self.num_extra_kv_tokens,
+                                               self._kv_reserve_draft_tokens)
         # Warmup baseline for cumulative counters (set by snapshot_warmup_baseline)
         self._warmup_reused_blocks = 0
         self._warmup_missed_blocks = 0

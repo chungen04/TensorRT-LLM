@@ -2017,6 +2017,10 @@ public:
         SizeType32 windowSize, std::optional<PrefixReuseSummary> const& cachedSummary = std::nullopt) const
         = 0;
 
+    /// @brief  Register spec-decode KV token overheads (extra tokens at context admission,
+    /// per-step draft reserve) so block-budget estimates match actual allocation.
+    virtual void setSpecDecodingBudget(SizeType32 /*numExtraKvTokens*/, SizeType32 /*draftTokenReserve*/) {}
+
     /// @brief  Function that computes the number of KV cache blocks needed to advance a request to completion (i.e. for
     /// maxNewTokens).
     /// @param req The request for which we need to calculate the number of needed KV cache blocks
@@ -2437,6 +2441,12 @@ public:
     [[nodiscard]] SizeType32 getNeededBlocksOneStep(LlmRequest const& req, bool twoStepsLookAhead,
         SizeType32 windowSize, std::optional<PrefixReuseSummary> const& cachedSummary = std::nullopt) const override;
 
+    void setSpecDecodingBudget(SizeType32 numExtraKvTokens, SizeType32 draftTokenReserve) override
+    {
+        mNumExtraKvTokens = numExtraKvTokens;
+        mDraftTokenReserve = draftTokenReserve;
+    }
+
     /// @brief  Function that computes the number of KV cache blocks remaining to advance a request to completion (i.e.
     /// for maxNewTokens); the allocated blocks are excluded
     /// @param req The request for which we need to calculate the number of needed KV cache blocks
@@ -2675,6 +2685,9 @@ private:
     SizeType32 mSinkBlockTokenLength;
     // Number of tokens in a chunk. If chunked-prefill is not enabled, this will be the same as max sequence length.
     SizeType32 mChunkSize;
+    // Spec-decode budget terms (see setSpecDecodingBudget)
+    SizeType32 mNumExtraKvTokens{0};
+    SizeType32 mDraftTokenReserve{0};
     // Block manager
     BlockManager mBlockManager;
     // Map of all sequences

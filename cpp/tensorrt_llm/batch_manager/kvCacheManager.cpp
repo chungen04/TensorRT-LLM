@@ -3419,11 +3419,10 @@ SizeType32 KVCacheManager::getNeededBlocksOneStep(LlmRequest const& req, bool tw
 
     if ((req.isContextInitState() && req.isFirstContextChunk()) || req.isDisaggGenerationInitState())
     {
-        auto const maxDraftTokensToAdd = std::min(req.getNumDraftTokens(), req.mMaxNewTokens);
+        auto const maxDraftTokensToAdd = std::max(req.getNumDraftTokens(), mDraftTokenReserve);
         auto const promptCacheLen
-            = std::min((isCrossKv() ? req.getEncoderOutputLen() : req.mPromptLen) + maxDraftTokensToAdd,
-                  windowSize + mChunkSize)
-            + mSinkBubbleLength;
+            = std::min((isCrossKv() ? req.getEncoderOutputLen() : req.mPromptLen), windowSize + mChunkSize)
+            + mSinkBubbleLength + mNumExtraKvTokens + maxDraftTokensToAdd;
         if (LinearAttentionMetadata::hasLinearCache(windowSize))
         {
             return mBlockManager.getLinearAttentionMetadata()->calcNumBlocksNeededForReq(
@@ -3474,11 +3473,8 @@ SizeType32 KVCacheManager::getNeededBlocksOneStep(LlmRequest const& req, bool tw
         }
 
         auto const numCurrTokens = getSequence(req.mRequestId).getNumTokens();
-        auto const generatedTokens = numCurrTokens - req.getPromptLen();
-        auto const maxTokensToAddToKVCache = req.mMaxNewTokens - generatedTokens;
-        auto const tokensPerStep = req.getNumDraftTokens() + 1;
-        auto const maxTokensToAdd = std::min((twoStepsLookAhead ? 2 : 1) * tokensPerStep, maxTokensToAddToKVCache);
-        auto const numNextTokens = numCurrTokens + maxTokensToAdd;
+        auto const tokensPerStep = std::max(req.getNumDraftTokens(), mDraftTokenReserve) + 1;
+        auto const maxTokensToAdd = (twoStepsLookAhead ? 2 : 1) * tokensPerStep;
 
         if (LinearAttentionMetadata::hasLinearCache(windowSize))
         {
@@ -3486,10 +3482,8 @@ SizeType32 KVCacheManager::getNeededBlocksOneStep(LlmRequest const& req, bool tw
                 numCurrTokens, req.getPromptLen(), getTokensPerBlock(), mEnableBlockReuse);
         }
 
-        if (numNextTokens > mBlockManager.getWindowSizeMetadata(windowSize).maxTokenNum)
-        {
-            return 0;
-        }
+        auto const maxSeqTokens = mBlockManager.getWindowSizeMetadata(windowSize).maxBlocksPerSeq * getTokensPerBlock();
+        auto const numNextTokens = std::min(numCurrTokens + maxTokensToAdd, maxSeqTokens);
 
         auto const numCurrBlocks = tc::ceilDiv(numCurrTokens, getTokensPerBlock());
         auto const numNextBlocks = tc::ceilDiv(numNextTokens, getTokensPerBlock());
